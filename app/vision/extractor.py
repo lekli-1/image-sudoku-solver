@@ -163,7 +163,7 @@ def slice_grid(flat_image: np.ndarray) -> list[np.ndarray]:
             # Crop an extra 4-5 pixels off all edges of the cell.
             # This removes the thick black grid lines so your CNN doesn't
             # mistake a vertical grid line for a '1' or a '7'.
-            margin = 4
+            margin = 8
             cell_img = cell_img[margin:-margin, margin:-margin]
 
             cells.append(cell_img)
