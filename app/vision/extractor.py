@@ -2,10 +2,10 @@ import cv2
 import numpy as np
 
 
-def process_image(image_path: str) -> list:
+def process_image(image_path: str) -> tuple:
     """
     Main orchestrator function. Takes an image path and returns
-    a list of 81 cropped cell images.
+    a list of 81 cropped cell images and the flattened 450x450 grid image.
     """
     # Read the image
     original_img = cv2.imread(image_path)
@@ -25,7 +25,7 @@ def process_image(image_path: str) -> list:
     # Slice into 81 cells
     cells = slice_grid(flat_grid)
 
-    return cells
+    return cells, flat_grid
 
 
 def preprocess(image: np.ndarray) -> np.ndarray:
@@ -169,3 +169,34 @@ def slice_grid(flat_image: np.ndarray) -> list[np.ndarray]:
             cells.append(cell_img)
 
     return cells
+
+
+def draw_solution(flat_grid: np.ndarray, original_board: list[list[int]], solved_board: list[list[int]]) -> np.ndarray:
+    """
+    Draws the solved numbers in bright green directly onto the perfectly flat Sudoku image.
+    """
+    # Ensure the image is in color (BGR) so we can draw green text!
+    if len(flat_grid.shape) == 2:
+        output_img = cv2.cvtColor(flat_grid, cv2.COLOR_GRAY2BGR)
+    else:
+        output_img = flat_grid.copy()
+
+    side = output_img.shape[0]  # This is the 450px side length
+    cell_size = side // 9
+    font = cv2.FONT_HERSHEY_DUPLEX
+
+    for row in range(9):
+        for col in range(9):
+            # Only draw if the cell was originally empty (0)
+            if original_board[row][col] == 0 and solved_board[row][col] != 0:
+                text = str(solved_board[row][col])
+
+                # Math to perfectly center the text in the cell
+                text_size = cv2.getTextSize(text, font, 1.2, 2)[0]
+                text_x = (col * cell_size) + (cell_size - text_size[0]) // 2
+                text_y = (row * cell_size) + (cell_size + text_size[1]) // 2
+
+                # Draw text in Green (BGR format: 0, 255, 0)
+                cv2.putText(output_img, text, (text_x, text_y), font, 1.2, (0, 255, 0), 2)
+
+    return output_img

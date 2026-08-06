@@ -1,5 +1,7 @@
 import sys
-from app.vision.extractor import process_image
+import copy
+import cv2
+from app.vision.extractor import process_image, draw_solution
 from app.vision.predict import predict_board
 from app.core.board import SudokuBoard
 from app.core.solver import solve
@@ -9,10 +11,11 @@ def main(image_path: str):
     print("\n--- Starting Sudoku Solver Pipeline ---")
     print(f"Processing: {image_path}")
 
-    # STEP 1: Computer Vision (Extract the cells)
+    # STEP 1: Computer Vision (Extract the cells and the flat image)
     print("\n1. Finding and extracting the grid...")
     try:
-        cells = process_image(image_path)
+        # UPDATED: Unpack both the cells and the flat 450x450 grid
+        cells, flat_grid = process_image(image_path)
     except Exception as e:
         print(f"Error extracting grid: {e}")
         print("Ensure the image is clear and contains a visible Sudoku grid.")
@@ -28,6 +31,9 @@ def main(image_path: str):
         return
 
     # STEP 3: Logic Initialization
+    # CRITICAL: Deep copy the grid so we know which cells were originally 0
+    original_grid = copy.deepcopy(raw_grid)
+
     # Wrap the 2D list into our SudokuBoard class
     board = SudokuBoard(raw_grid)
 
@@ -42,6 +48,17 @@ def main(image_path: str):
         print("\n--- Solved Board ---")
         print(board)
         print("Success! The puzzle is complete.")
+
+        # STEP 5: Draw the Solution on the Image
+        print("\n4. Drawing solution onto the flat grid...")
+        final_image = draw_solution(flat_grid, original_grid, board.grid)
+
+        # Display the result
+        cv2.imshow("Solved Flat Sudoku", final_image)
+
+        print("Press any key on the image window to close it and exit.")
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
     else:
         print("\n Failed to solve the board.")
         print("This usually means the OCR misread a number (e.g., read a 1 as a 7), ")
@@ -54,6 +71,6 @@ if __name__ == "__main__":
         target_image = sys.argv[1]
     else:
         # Fallback to a default image if none is provided in the terminal
-        target_image = "sample_sudoku.jpg"
+        target_image = "examples/screenshot_normal.png"
 
     main(target_image)
