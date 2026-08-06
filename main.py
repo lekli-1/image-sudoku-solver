@@ -25,7 +25,7 @@ def main(image_path: str):
     print("2. AI is reading the numbers...")
     try:
         # Pass the 81 cell images to our trained PyTorch model
-        raw_grid = predict_board(cells, model_path="sudoku_cnn.pth")
+        raw_grid = predict_board(cells, model_path="models/sudoku_cnn.pth")
     except Exception as e:
         print(f"Error reading digits: {e}")
         return
