@@ -2,27 +2,19 @@ import cv2
 import numpy as np
 
 
-def process_image(image_path: str) -> tuple:
+def process_image(original_img: np.ndarray) -> tuple[list, np.ndarray]:
     """
-    Main orchestrator function. Takes an image path and returns
+    Main orchestrator function. Takes an image array in memory and returns
     a list of 81 cropped cell images and the flattened 450x450 grid image.
     """
-    # Read the image
-    original_img = cv2.imread(image_path)
 
-    # Preprocess
     processed_img = preprocess(original_img)
-
-    # Find the corners of the biggest square
     corners = find_grid_corners(processed_img)
 
     if corners is None:
         raise ValueError("Could not find a Sudoku grid in the image.")
 
-    # Warp the image flat
     flat_grid = warp_perspective(original_img, corners)
-
-    # Slice into 81 cells
     cells = slice_grid(flat_grid)
 
     return cells, flat_grid
