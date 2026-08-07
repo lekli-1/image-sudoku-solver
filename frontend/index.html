@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Sudoku Solver</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            padding: 20px;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        .upload-area {
+            border: 3px dashed #ccc;
+            border-radius: 12px;
+            padding: 40px 20px;
+            max-width: 500px;
+            margin: 0 auto 20px auto;
+            background-color: white;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        /* Highlight the box when a user drags a file over it */
+        .upload-area.drag-over {
+            border-color: #4CAF50;
+            background-color: #e8f5e9;
+            transform: scale(1.02);
+        }
+        .upload-area:hover {
+            border-color: #888;
+        }
+
+        /* Hide the default ugly file input, we will trigger it by clicking the box */
+        #imageInput {
+            display: none;
+        }
+
+        #result-container {
+            display: none;
+            margin-top: 30px;
+        }
+        .comparison-wrapper {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .image-box {
+            flex: 1;
+            min-width: 300px;
+            max-width: 450px;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        img {
+            width: 100%;
+            height: auto;
+            border-radius: 5px;
+        }
+        .error { color: #d32f2f; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>AI Sudoku Solver</h1>
+
+    <div class="upload-area" id="dropZone">
+        <p style="font-size: 18px; margin: 0;">
+            <strong>Drag & Drop</strong> an image here<br><br>
+            Or press <strong>Ctrl+V</strong> to paste<br><br>
+            Or <strong>Click</strong> to browse
+        </p>
+        <input type="file" id="imageInput" accept="image/*">
+    </div>
+
+    <p id="status"></p>
+
+    <div id="result-container">
+        <div class="comparison-wrapper">
+            <div class="image-box">
+                <h3>Original Puzzle</h3>
+                <img id="originalImage" alt="Original Sudoku">
+            </div>
+            <div class="image-box" id="solvedBox" style="display: none;">
+                <h3>Solved!</h3>
+                <img id="resultImage" alt="Solved Sudoku">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentFile = null;
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('imageInput');
+
+        // --- UNIFIED HANDLER ---
+        // This runs no matter how the user provides the image
+        function processNewFile(file) {
+            currentFile = file;
+
+            // Sync the hidden file input
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(currentFile);
+            fileInput.files = dataTransfer.files;
+
+            // Instantly solve!
+            triggerSolve();
+        }
+
+        // CLICK TO UPLOAD
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                processNewFile(e.target.files[0]);
+            }
+        });
+
+        // PASTE (CTRL+V)
+        document.addEventListener('paste', function(e) {
+            if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+                const pastedFile = e.clipboardData.files[0];
+                if (pastedFile.type.startsWith('image/')) {
+                    processNewFile(pastedFile);
+                }
+            }
+        });
+
+        // DRAG AND DROP
+        // Prevent the browser from opening the image in a new tab
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            document.body.addEventListener(eventName, preventDefaults, false);
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // Add visual styling when dragging over the box
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false);
+        });
+
+        // Handle the actual drop
+        dropZone.addEventListener('drop', function(e) {
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const droppedFile = e.dataTransfer.files[0];
+                if (droppedFile.type.startsWith('image/')) {
+                    processNewFile(droppedFile);
+                }
+            }
+        });
+
+        // --- BACKEND API CALL ---
+        async function triggerSolve() {
+            const statusText = document.getElementById('status');
+            const resultContainer = document.getElementById('result-container');
+            const originalImg = document.getElementById('originalImage');
+            const resultImg = document.getElementById('resultImage');
+            const solvedBox = document.getElementById('solvedBox');
+
+            originalImg.src = URL.createObjectURL(currentFile);
+            resultContainer.style.display = "block";
+            solvedBox.style.display = "none";
+
+            statusText.innerText = "Analyzing and solving... 🤔";
+            statusText.className = "";
+
+            const formData = new FormData();
+            formData.append("file", currentFile);
+
+            try {
+                const response = await fetch('/solve', { method: 'POST', body: formData });
+                const data = await response.json();
+
+                if (data.status === "success") {
+                    statusText.innerText = "Puzzle Solved! 🎉";
+                    resultImg.src = "data:image/jpeg;base64," + data.image;
+                    solvedBox.style.display = "block";
+                } else {
+                    statusText.innerText = "Error: " + data.message;
+                    statusText.className = "error";
+                }
+            } catch (err) {
+                console.error("Failed to solve the Sudoku puzzle:", err);
+                statusText.innerText = "Server error occurred. Check the terminal logs.";
+                statusText.className = "error";
+            }
+        }
+    </script>
+</body>
+</html>

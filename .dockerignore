@@ -1,0 +1,17 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Data and training files
+data/
+scripts/
+tests/
+examples/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Git
+.git/

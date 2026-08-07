@@ -1,76 +1,57 @@
-import sys
-import copy
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import HTMLResponse, FileResponse
 import cv2
+import numpy as np
+import base64
+import copy
+import uvicorn
+
 from app.vision.extractor import process_image, draw_solution
 from app.vision.predict import predict_board
 from app.core.board import SudokuBoard
 from app.core.solver import solve
 
+app = FastAPI(title="Sudoku Solver API")
 
-def main(image_path: str):
-    print("\n--- Starting Sudoku Solver Pipeline ---")
-    print(f"Processing: {image_path}")
 
-    # STEP 1: Computer Vision (Extract the cells and the flat image)
-    print("\n1. Finding and extracting the grid...")
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    return FileResponse("frontend/index.html")
+
+
+
+@app.post("/solve",responses = {200: {"description": "Returns the solved Sudoku image in Base64 format."}, 400: {"description": "Invalid image file."}, 500: {"description": "Vision processing error."}})
+async def solve_sudoku(file: Annotated[UploadFile, File(...)]):
+    # Read the uploaded file into memory
+    contents = await file.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+    if img is None:
+        raise HTTPException(status_code=400, detail="Invalid image file")
+
+    # Run the Vision Pipeline
     try:
-        # UPDATED: Unpack both the cells and the flat 450x450 grid
-        cells, flat_grid = process_image(image_path)
+        cells, flat_grid = process_image(img)
+        raw_grid = predict_board(cells, model_path="models/sudoku_cnn.onnx")
     except Exception as e:
-        print(f"Error extracting grid: {e}")
-        print("Ensure the image is clear and contains a visible Sudoku grid.")
-        return
+        raise HTTPException(status_code=500, detail=f"Vision Error: {str(e)}")
 
-    # STEP 2: Artificial Intelligence (Read the numbers)
-    print("2. AI is reading the numbers...")
-    try:
-        # Pass the 81 cell images to our trained PyTorch model
-        raw_grid = predict_board(cells, model_path="models/sudoku_cnn.pth")
-    except Exception as e:
-        print(f"Error reading digits: {e}")
-        return
-
-    # STEP 3: Logic Initialization
-    # CRITICAL: Deep copy the grid so we know which cells were originally 0
+    # Solve the Board
     original_grid = copy.deepcopy(raw_grid)
-
-    # Wrap the 2D list into our SudokuBoard class
     board = SudokuBoard(raw_grid)
 
-    print("\n--- AI Detected Board ---")
-    print(board)
-
-    # STEP 4: Solving the Puzzle
-    print("3. Solving the puzzle...")
-    success = solve(board)
-
-    if success:
-        print("\n--- Solved Board ---")
-        print(board)
-        print("Success! The puzzle is complete.")
-
-        # STEP 5: Draw the Solution on the Image
-        print("\n4. Drawing solution onto the flat grid...")
+    if solve(board):
+        # 4. Draw the solution and convert it to Base64 for the browser
         final_image = draw_solution(flat_grid, original_grid, board.grid)
 
-        # Display the result
-        cv2.imshow("Solved Flat Sudoku", final_image)
+        _, buffer = cv2.imencode('.jpg', final_image)
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
 
-        print("Press any key on the image window to close it and exit.")
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        return {"status": "success", "image": img_base64}
     else:
-        print("\n Failed to solve the board.")
-        print("This usually means the OCR misread a number (e.g., read a 1 as a 7), ")
-        print("making the puzzle mathematically impossible. Check the 'AI Detected Board' above.")
+        return {"status": "error", "message": "Could not mathematically solve the board. OCR may have misread a digit."}
 
 
 if __name__ == "__main__":
-    # You can run this from the terminal using: python main.py my_photo.jpg
-    if len(sys.argv) > 1:
-        target_image = sys.argv[1]
-    else:
-        # Fallback to a default image if none is provided in the terminal
-        target_image = "examples/screenshot_normal.png"
-
-    main(target_image)
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

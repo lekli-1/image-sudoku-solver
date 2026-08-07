@@ -1,12 +1,10 @@
-import cv2
 import numpy as np
-import torch
-from PIL import Image
-from torchvision import transforms
+import cv2
+import onnxruntime as ort
 
-from app.vision.model import SudokuCNN
 
 def clean_cell(cell_img: np.ndarray, padding: int = 4) -> np.ndarray:
+    """Removes grid lines and centers the digit."""
     if len(cell_img.shape) == 3:
         gray = cv2.cvtColor(cell_img, cv2.COLOR_BGR2GRAY)
     else:
@@ -35,34 +33,38 @@ def clean_cell(cell_img: np.ndarray, padding: int = 4) -> np.ndarray:
     return final_clean
 
 
-def predict_board(cells: list, model_path: str = "sudoku_cnn.pth") -> list[list[int]]:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    model = SudokuCNN().to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device))
-    model.eval()
-
-    transform = transforms.Compose([
-        transforms.Resize((32, 32)),
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
-    ])
+def predict_board(cells: list, model_path: str = "models/sudoku_cnn.onnx") -> list[list[int]]:
+    # Load the ONNX model
+    session = ort.InferenceSession(model_path)
+    input_name = session.get_inputs()[0].name
 
     board = []
     current_row = []
 
-    for i, cell_img in enumerate(cells):
-        clean_img = clean_cell(cell_img)
-        pil_img = Image.fromarray(clean_img)
-        tensor_img = transform(pil_img).unsqueeze(0).to(device)
+    for img in cells:
+        # CLEAN THE CELL FIRST
+        clean_img = clean_cell(img)
 
-        with torch.no_grad():
-            output = model(tensor_img)
-            prediction = torch.argmax(output, dim=1).item()
+        # Resize to 32x32
+        resized = cv2.resize(clean_img, (32, 32))
 
-        current_row.append(prediction)
+        # Scale 0-255 to 0.0-1.0
+        normalized_01 = resized.astype(np.float32) / 255.0
 
-        if (i + 1) % 9 == 0:
+        # Scale to -1.0 to 1.0
+        normalized_final = (normalized_01 - 0.5) / 0.5
+
+        # Reshape to match the exact tensor shape ONNX expects: (Batch=1, Channel=1, H=32, W=32)
+        tensor_img = np.expand_dims(normalized_final, axis=(0, 1)).astype(np.float32)
+
+        # Run the ONNX prediction
+        outputs = session.run(None, {input_name: tensor_img})
+
+        # The output is an array of probabilities; get the index of the highest one
+        prediction = np.argmax(outputs[0])
+        current_row.append(int(prediction))
+
+        if len(current_row) == 9:
             board.append(current_row)
             current_row = []
 
