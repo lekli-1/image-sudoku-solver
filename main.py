@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
+from typing import Annotated
 import cv2
 import numpy as np
 import base64
